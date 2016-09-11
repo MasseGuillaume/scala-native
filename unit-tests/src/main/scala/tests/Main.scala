@@ -4,15 +4,16 @@ import java.lang.System.exit
 
 object Main {
   val suites = Seq[Suite](
-      tests.SuiteSuite,
-      java.lang.IntegerSuite,
-      java.lang.FloatSuite,
-      java.lang.DoubleSuite,
-      java.util.RandomSuite,
-      scala.scalanative.native.CStringSuite,
-      scala.ArrayIntCopySuite,
-      scala.ArrayDoubleCopySuite,
-      scala.ArrayObjectCopySuite
+      // tests.SuiteSuite,
+      // java.lang.IntegerSuite,
+      // java.lang.FloatSuite,
+      // java.lang.DoubleSuite,
+      // java.util.RandomSuite,
+      // scala.scalanative.native.CStringSuite,
+      // scala.ArrayIntCopySuite,
+      // scala.ArrayDoubleCopySuite,
+      // scala.ArrayObjectCopySuite
+      java.util.FormatterSuite
   )
 
   def main(args: Array[String]): Unit = {

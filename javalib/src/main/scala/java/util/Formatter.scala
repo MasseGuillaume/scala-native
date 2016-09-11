@@ -19,12 +19,25 @@ class Formatter {
 
   def close(): Unit = ???
   def flush(): Unit = ???
-  def format(locale: Locale, format: String, args: Array[Object]): Formatter =
-    ???
-  def format(format: String, args: Array[Object]): Formatter = ???
+
+  // (BigDecimal.ZERO, "%f", "0.000000"),
+
+  def format(locale: Locale, format: String, args: Array[Object]): Formatter = ???
+  def format(locale: Locale, format: String, args: Object*): Formatter = ???
+
+  def format(format: String, args: Array[Object]): Formatter = {
+    buffer = args.map(_.toString).mkString
+    this
+  }
+  def format(format: String, args: Object*): Formatter = this.format(format, args.toArray)
+
   def ioException(): IOException                             = ???
   def locale(): Locale                                       = ???
   def out(): Appendable                                      = ???
+
+  private var buffer: String = ""
+
+  override def toString = buffer
 }
 
-object Formatter
+// object Formatter
