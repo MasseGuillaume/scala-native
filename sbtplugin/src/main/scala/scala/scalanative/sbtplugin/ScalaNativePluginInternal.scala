@@ -155,10 +155,32 @@ object ScalaNativePluginInternal {
 
       checkThatClangIsRecentEnough(clang)
 
-      IO.createDirectory(target)
-      unpackRtlib(clang, clangpp, classpath)
-      val links = compileNir(opts).map(_.name)
-      compileLl(clangpp, target, appll, binary, links, linkage, clangOpts)
+      val nirFiles   = (Keys.target.value ** "*.nir").get.toSet
+      val configFile = (streams.value.cacheDirectory / "native-config")
+      val inputFiles = nirFiles + configFile
+
+      writeConfig(configFile,
+                  opts,
+                  clang,
+                  clangpp,
+                  classpath,
+                  target,
+                  appll,
+                  binary,
+                  linkage,
+                  clangOpts)
+
+      val compileIfChanged =
+        FileFunction.cached(streams.value.cacheDirectory / "native-cache",
+                            FilesInfo.hash) { _ =>
+          IO.createDirectory(target)
+          unpackRtlib(clang, clangpp, classpath)
+          val links = compileNir(opts).map(_.name)
+          compileLl(clangpp, target, appll, binary, links, linkage, clangOpts)
+          Set(binary)
+        }
+
+      val _ = compileIfChanged(inputFiles)
 
       binary
     },
@@ -177,6 +199,9 @@ object ScalaNativePluginInternal {
       Defaults.toError(message)
     }
   )
+
+  private def writeConfig(file: File, config: Any*): Unit =
+    IO.write(file, config.##.toString)
 
   private def maybeInjectShared(lib: Boolean): Seq[String] =
     if (lib) Seq("-shared") else Seq.empty
