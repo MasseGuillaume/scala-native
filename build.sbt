@@ -17,9 +17,9 @@ lazy val publishSettings = Seq(
   publishArtifact in Compile := true,
   publishArtifact in Test := false,
   publishMavenStyle := true,
-  publishTo <<= version { v: String =>
+  publishTo := {
     val nexus = "https://oss.sonatype.org/"
-    if (v.trim.endsWith("SNAPSHOT"))
+    if (version.value.trim.endsWith("SNAPSHOT"))
       Some("snapshots" at nexus + "content/repositories/snapshots")
     else
       Some("releases" at nexus + "service/local/staging/deploy/maven2")
@@ -178,15 +178,17 @@ lazy val sbtplugin =
       },
       sbtTestDirectory := (baseDirectory in ThisBuild).value / "scripted-tests",
       // publish the other projects before running scripted tests.
-      scripted <<= scripted.dependsOn(publishLocal in util,
-                                      publishLocal in nir,
-                                      publishLocal in tools,
-                                      publishLocal in nscplugin,
-                                      publishLocal in nativelib,
-                                      publishLocal in javalib,
-                                      publishLocal in scalalib)
+      scripted := scripted
+        .dependsOn(publishLocal in util,
+                   publishLocal in nir,
+                   publishLocal in tools,
+                   publishLocal in nscplugin,
+                   publishLocal in nativelib,
+                   publishLocal in javalib,
+                   publishLocal in scalalib)
+        .evaluated
     )
-    .dependsOn(tools)
+    .dependsOn(tools, testInterface)
 
 lazy val nativelib =
   project
@@ -206,7 +208,7 @@ lazy val nativelib =
       if (compileSuccess) {
         (compile in Compile).value
       } else {
-        error("Compilation failed")
+        sys.error("Compilation failed")
       }
     })
 
@@ -255,13 +257,15 @@ lazy val scalalib =
         IO.copyDirectory(trgDir / "src" / "library" / "scala",
                          file("scalalib/src/main/scala/scala"))
 
+        IO.delete(file("scalalib/src/main/scala/scala/concurrent/impl/AbstractPromise.java"))
+
         val epoch :: major :: _ = scalaVersion.value.split("\\.").toList
         IO.copyDirectory(file(s"scalalib/overrides-$epoch.$major/scala"),
                          file("scalalib/src/main/scala/scala"),
                          overwrite = true)
       },
-      compile in Compile <<= (compile in Compile) dependsOn assembleScalaLibrary,
-      publishLocal <<= publishLocal dependsOn assembleScalaLibrary
+      compile in Compile := ((compile in Compile) dependsOn assembleScalaLibrary).value,
+      publishLocal := (publishLocal dependsOn assembleScalaLibrary).value
     )
     .dependsOn(nativelib, javalib)
 
@@ -308,11 +312,40 @@ lazy val tests =
       }.taskValue
     )
 
+lazy val utest =
+  project
+    .in(file("utest"))
+    .settings(projectSettings)
+    .settings(noPublishSettings)
+    .settings(nativeSharedLibrary := true)
+    .settings(
+      libraryDependencies ++= Seq(
+        "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+        "org.scala-sbt" % "test-interface" % "1.0"
+      )
+    )
+
 lazy val sandbox =
   project
     .in(file("sandbox"))
-    .settings(projectSettings)
-    .settings(noPublishSettings)
+    .settings(
+      noPublishSettings,
+      scalaVersion := libScalaVersion,
+      testFrameworks += new TestFramework("utest.runner.Framework")
+    )
+    .enablePlugins(ScalaNativePlugin)
+    .dependsOn(utest)
+
+lazy val testInterface =
+  project
+    .in(file("test-interface"))
+    .settings(
+      name := "test-interface",
+      baseSettings,
+      scalaVersion := libScalaVersion,
+      crossScalaVersions := Seq(toolScalaVersion, libScalaVersion),
+      libraryDependencies += "org.scala-sbt" % "test-interface" % "1.0"
+    )
 
 lazy val benchmarks =
   project
@@ -342,3 +375,29 @@ lazy val benchmarks =
         Seq(file)
       }.taskValue
     )
+
+commands ++= Seq(
+  Command.command("cleanAll") { state =>
+    "clean" ::
+      "cleanCache" ::
+        "cleanLocal" ::
+          state
+  },
+  Command.command("publishLocalAll") { state =>
+    "nscplugin/publishLocal" ::
+      "nativelib/publishLocal" ::
+        "project testInterface" ::
+        "+ testInterface/publishLocal" ::
+          "publishLocal" ::
+            state
+  },
+  Command.command("testAll") { state =>
+    "tools/test" ::
+      "sandbox/run" ::
+        "demoNative/run" ::
+          "tests/run" ::
+            "benchmarks/run" ::
+             "scripted" ::
+              state
+  }
+)

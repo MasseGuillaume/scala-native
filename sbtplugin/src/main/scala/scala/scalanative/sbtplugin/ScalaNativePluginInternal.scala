@@ -34,14 +34,31 @@ object ScalaNativePluginInternal {
 
   private def discover(binaryName: String,
                        binaryVersions: Seq[(String, String)]): File = {
-    val binaryNames = binaryVersions.flatMap {
-      case (major, minor) =>
-        Seq(s"$binaryName$major$minor", s"$binaryName-$major.$minor")
-    } :+ binaryName
 
-    Process("which" +: binaryNames).lines_!.map(file(_)).headOption.getOrElse {
-      throw new MessageOnlyException(
-        s"no ${binaryNames.mkString(", ")} found in $$PATH. Install clang")
+    val docInstallUrl =
+      "http://scala-native.readthedocs.io/en/latest/user/setup.html#installing-llvm-clang-and-boehm-gc"
+
+    if (Process(Seq("uname", "-a")).lines_!.exists(_.contains("NixOS"))) {
+      Process(Seq("which", binaryName)).lines_!
+        .map(file(_))
+        .headOption
+        .getOrElse {
+          throw new MessageOnlyException(
+            s"no $binaryName found in $$PATH. Install clang ($docInstallUrl)")
+        }
+    } else {
+      val binaryNames = binaryVersions.flatMap {
+        case (major, minor) =>
+          Seq(s"$binaryName$major$minor", s"$binaryName-$major.$minor")
+      } :+ binaryName
+
+      Process("which" +: binaryNames).lines_!
+        .map(file(_))
+        .headOption
+        .getOrElse {
+          throw new MessageOnlyException(
+            s"no ${binaryNames.mkString(", ")} found in $$PATH. Install clang ($docInstallUrl)")
+        }
     }
   }
 
@@ -114,19 +131,57 @@ object ScalaNativePluginInternal {
     Process(compile, target).!
   }
 
-  lazy val projectSettings = Seq(
+  private lazy val syntheticProjectsSuffix = "-native-test-main"
+
+  lazy val projectSettings =
+    unscopedSettings ++
+      inConfig(Compile)(scopedSettings) ++
+      inConfig(Test)(scopedSettings) ++
+      inScope(Global)(defaultSettings)
+
+  lazy val unscopedSettings = Seq(
     libraryDependencies ++= Seq(
-      "org.scala-native" %% "nativelib" % nativeVersion,
-      "org.scala-native" %% "javalib"   % nativeVersion,
-      "org.scala-native" %% "scalalib"  % nativeVersion
+      "org.scala-native" %% "nativelib"      % nativeVersion,
+      "org.scala-native" %% "javalib"        % nativeVersion,
+      "org.scala-native" %% "scalalib"       % nativeVersion,
+      "org.scala-native" %% "test-interface" % nativeVersion
     ),
     addCompilerPlugin(
       "org.scala-native" % "nscplugin" % nativeVersion cross CrossVersion.full),
-    resolvers += Resolver.sonatypeRepo("snapshots"),
-    nativeVerbose := false,
-    nativeEmitDependencyGraphPath := None,
-    nativeLibraryLinkage := Map(),
-    nativeSharedLibrary := false,
+    resolvers += Resolver.sonatypeRepo("snapshots")
+  )
+
+  def derivedProjects(proj: ProjectDefinition[_]): Seq[Project] =
+    if (proj.projectOrigin != ProjectOrigin.DerivedProject) {
+      val id        = proj.id + syntheticProjectsSuffix
+      val reference = LocalProject(proj.id)
+      Seq(
+        Project(id, file(id))
+          .settings(
+            description := "Synthetic project that holds the test main.")
+          .settings(
+            scalaVersion := (scalaVersion in reference).value,
+            test in Test := {
+              sys.props("scala.native.testbinary") =
+                (nativeLink in Test).value.toString
+              (test in Test).value
+            },
+            test in Test := ((test in Test) dependsOn (nativeLink in Test)).value,
+            sourceGenerators in Test += Def.task {
+              val out   = (sourceManaged in Test).value / "Main.scala"
+              val tests = (definedTests in Test in reference).value map TestUtilities.remapTestDefinition
+              IO.write(out, TestUtilities.createTestMain(tests))
+              Seq(out)
+            }.taskValue
+          )
+          .settings(ScalaNativePlugin.projectSettings)
+          .dependsOn(reference % "compile->compile;test->test")
+      )
+    } else {
+      Seq()
+    }
+
+  lazy val defaultSettings = Seq(
     nativeClang := {
       discover("clang", Seq(("3", "8"), ("3", "7")))
     },
@@ -142,16 +197,24 @@ object ScalaNativePluginInternal {
       }
       includes ++ libs ++ maybeInjectShared(nativeSharedLibrary.value) ++ lrt
     },
+    nativeSharedLibrary := false,
+    testFrameworks += new TestFramework("scala.scalanative.test.Framework")
+  )
+
+  private lazy val scopedSettings = Seq(
+    nativeVerbose := false,
+    nativeEmitDependencyGraphPath := None,
+    nativeLibraryLinkage := Map(),
     artifactPath in nativeLink := {
-      (crossTarget in Compile).value / (moduleName.value + "-out")
+      crossTarget.value / (moduleName.value + "-out")
     },
     nativeLink := {
-      val mainClass = (selectMainClass in Compile).value.getOrElse(
+      val mainClass = (selectMainClass in run).value.getOrElse(
         throw new MessageOnlyException("No main class detected.")
       )
       val entry         = mainClass.toString + "$"
-      val classpath     = cpToStrings((fullClasspath in Compile).value.map(_.data))
-      val target        = (crossTarget in Compile).value
+      val classpath     = cpToStrings(fullClasspath.value.map(_.data))
+      val target        = crossTarget.value
       val appll         = target / (moduleName.value + "-out.ll")
       val binary        = (artifactPath in nativeLink).value
       val verbose       = nativeVerbose.value
@@ -170,17 +233,39 @@ object ScalaNativePluginInternal {
 
       checkThatClangIsRecentEnough(clang)
 
-      IO.createDirectory(target)
-      val unpackSuccess = unpackRtlib(clang, clangpp, classpath)
+      val nirFiles   = (Keys.target.value ** "*.nir").get.toSet
+      val configFile = (streams.value.cacheDirectory / "native-config")
+      val inputFiles = nirFiles + configFile
 
-      if (unpackSuccess) {
-        val links = compileNir(opts).map(_.name)
-        compileLl(clangpp, target, appll, binary, links, linkage, clangOpts)
+      writeConfig(configFile,
+                  opts,
+                  clang,
+                  clangpp,
+                  classpath,
+                  target,
+                  appll,
+                  binary,
+                  linkage,
+                  clangOpts)
 
-        binary
-      } else {
-        throw new MessageOnlyException("Couldn't unpack nativelib.")
-      }
+      val compileIfChanged =
+        FileFunction.cached(streams.value.cacheDirectory / "native-cache",
+                            FilesInfo.hash) { _ =>
+          IO.createDirectory(target)
+          val unpackSuccess = unpackRtlib(clang, clangpp, classpath)
+
+          if (unpackSuccess) {
+            val links = compileNir(opts).map(_.name)
+            compileLl(clangpp, target, appll, binary, links, linkage, clangOpts)
+            Set(binary)
+          } else {
+            throw new MessageOnlyException("Couldn't unpack nativelib.")
+          }
+        }
+
+      val _ = compileIfChanged(inputFiles)
+
+      binary
     },
     run := {
       val log    = streams.value.log
@@ -197,6 +282,9 @@ object ScalaNativePluginInternal {
       Defaults.toError(message)
     }
   )
+
+  private def writeConfig(file: File, config: Any*): Unit =
+    IO.write(file, config.##.toString)
 
   private def maybeInjectShared(lib: Boolean): Seq[String] =
     if (lib) Seq("-shared") else Seq.empty
