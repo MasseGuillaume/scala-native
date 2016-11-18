@@ -301,3 +301,26 @@ lazy val sandbox =
     .in(file("sandbox"))
     .settings(projectSettings)
     .settings(noPublishSettings)
+
+commands ++= Seq(
+  Command.command("cleanAll") { state =>
+    "clean" ::
+      "cleanCache" ::
+        "cleanLocal" ::
+          state
+  },
+  Command.command("publishLocalAll") { state =>
+    "nscplugin/publishLocal" ::
+      "nativelib/publishLocal" ::
+        "publishLocal" ::
+          state
+  },
+  Command.command("testAll") { state =>
+    "tools/test" ::
+      "sandbox/run" ::
+        "demoNative/run" ::
+          "tests/run" ::
+            "scripted" ::
+              state
+  }
+)
