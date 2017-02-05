@@ -12,6 +12,7 @@ in rec {
     buildInputs = with pkgs; [
       stdenv
       sbt
+      openjdk
       boehmgc
       libunwind
       clang
