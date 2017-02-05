@@ -1,9 +1,6 @@
 let
   pkgs = import <nixpkgs> {};
   stdenv = pkgs.stdenv;
-  sbtOracle = pkgs.sbt.override {
-    jre = pkgs.oraclejdk8.jre;
-  };
 in rec {
   clangEnv = stdenv.mkDerivation rec {
     name = "clang-env";
@@ -14,7 +11,7 @@ in rec {
     CLANGPP_PATH = pkgs.clang + "/bin/clang++";
     buildInputs = with pkgs; [
       stdenv
-      sbtOracle
+      sbt
       boehmgc
       libunwind
       clang
