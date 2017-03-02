@@ -19,6 +19,7 @@ object SyscallsSuite extends tests.Suite {
 
     val pid = unistd.fork()
 
+    // http://www2.cs.uregina.ca/~hamilton/courses/330/notes/unix/pipes/pipes.html
     val message = "Hi Mom!"
 
     if(pid == 0) {
