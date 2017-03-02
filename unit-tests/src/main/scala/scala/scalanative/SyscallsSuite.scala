@@ -1,9 +1,9 @@
 package scala.scalanative
 
-import scala.scalanative.native.{CInt, CArray}
-import scala.scalanative.native.Nat.{_2}
-import scala.scalanative.posix.unistd
-import unistd._
+import native._
+import native.Nat.{_2}
+
+import posix.unistd
 
 /**
   * Created by remi on 02/03/17.
@@ -13,23 +13,22 @@ object SyscallsSuite extends tests.Suite {
   test("simple pipe") {
 
     val p = stackalloc[CArray[CInt, _2]]
-    val ptr = stackalloc[CInt]
-
     val err = unistd.pipe(p)
 
-    /* write down pipe */
-    (0 to 2) foreach{ i =>
-      !ptr = i
-      unistd.write(p._2, ptr, 4)
-    }
+    assert(err == 0)
 
-    /* read pipe */
-    (0 to 2) foreach { i =>
-      unistd.read(p._1, ptr, 4)
-      assert(!ptr == i)
-    }
+    val pid = unistd.fork()
 
+    val message = "Hi Mom!"
+
+    if(pid == 0) {
+      unistd.write(!p._2, toCString(message), message.length)
+    } else {
+      val cstr = stackalloc[CChar](32)
+      unistd.read(!p._1, cstr, message.length)
+      val out = fromCString(cstr)
+      println(out)
+      assert(out == message)
+    }
   }
-
-
 }

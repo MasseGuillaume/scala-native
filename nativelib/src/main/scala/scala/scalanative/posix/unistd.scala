@@ -1,9 +1,9 @@
 package scala.scalanative
 package posix
 
-import scala.scalanative.native.Nat._2
-import scala.scalanative.native._
-import scala.scalanative.posix.sys.types._
+import native._
+import native.Nat._2
+import posix.sys.types._
 
 /**
  * Created by marius on 27.10.16.
@@ -25,7 +25,7 @@ object unistd {
   def write(fd: CInt, buf: Ptr[Byte], count: CSize): ssize_t = extern
 
   //http://man7.org/linux/man-pages/man7/pipe.7.html
-  def pipe(pipefd: CArray[CInt, _2]): CInt               = extern
+  def pipe(pipefd: Ptr[CArray[CInt, _2]]): CInt               = extern
   def pipe2(pipefd: CArray[CInt, _2], flags: CInt): CInt = extern
 
   def pause(): CInt                                               = extern
