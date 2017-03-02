@@ -17,15 +17,15 @@ object unistd {
   def faccessat(dirfd: CInt,
                 pathname: CString,
                 mode: CInt,
-                flags: CInt): CInt                                = extern
-  def lseek(fd: CInt, offset: off_t, whence: CInt): off_t         = extern
-  def close(fd: CInt): CInt                                       = extern
-  def read(fd: CInt, buf: Ptr[Byte], count: CSize): CSize         = extern
-  def write(fd: CInt, buf: Ptr[Byte], count: CSize): ssize_t      = extern
+                flags: CInt): CInt                           = extern
+  def lseek(fd: CInt, offset: off_t, whence: CInt): off_t    = extern
+  def close(fd: CInt): CInt                                  = extern
+  def read(fd: CInt, buf: Ptr[Byte], count: CSize): CSize    = extern
+  def write(fd: CInt, buf: Ptr[Byte], count: CSize): ssize_t = extern
 
   //http://man7.org/linux/man-pages/man7/pipe.7.html
-  def pipe(pipefd: CArray[CInt, _2]): CInt                        = extern
-  def pipe2(pipefd: CArray[CInt, _2], flags: CInt): CInt          = extern
+  def pipe(pipefd: CArray[CInt, _2]): CInt               = extern
+  def pipe2(pipefd: CArray[CInt, _2], flags: CInt): CInt = extern
 
   def pause(): CInt                                               = extern
   def chown(pathname: CString, owner: uid_t, group: gid_t): CInt  = extern
@@ -77,7 +77,7 @@ object unistd {
              oldpath: CString,
              newdirfd: CInt,
              newpath: CString,
-             flags: CInt): CInt                         = extern
+             flags: CInt): CInt = extern
 
   // symlinks : http://man7.org/linux/man-pages/man7/symlink.7.html
   def symlink(target: CString, linkpath: CString): CInt = extern
@@ -88,9 +88,8 @@ object unistd {
   def readlinkat(dirfd: CInt,
                  pathname: CString,
                  bug: CString,
-                 bufsize: CSize): ssize_t                         = extern
-  def unlink(pathname: CString): CInt                             = extern
-
+                 bufsize: CSize): ssize_t = extern
+  def unlink(pathname: CString): CInt     = extern
 
   def unlinkat(dirfd: CInt, pathname: CString, flags: CInt): CInt = extern
   def rmdir(pathname: CString): CInt                              = extern
